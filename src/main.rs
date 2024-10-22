@@ -13,7 +13,7 @@ use clap::Parser;
 use data::{load_configfile, LocalRepo, PatchedRepo};
 use gitutils::build_git_client;
 use log::{debug, info, warn, error};
-use patcher::run_patch;
+use patcher::{run_patch, PatchSource};
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -25,7 +25,10 @@ struct Args {
     config_file: Option<String>,
 
     #[arg(short, long)]
-    patch_file: String,
+    patch_file: Option<String>,
+
+    #[arg(long)]
+    patch_script: Option<String>
 }
 
 fn homedir() -> String {
@@ -35,13 +38,32 @@ fn homedir() -> String {
     }
 }
 
-fn get_patch_file(args:&Args) -> Result<PathBuf, Box<dyn Error>> {
-    let patchfile = Path::new(&args.patch_file);
-    if patchfile.exists() {
-        Ok(patchfile.canonicalize()?)
-    } else {
-        error!("💩 Patch file does not exist at {}", args.patch_file);
-        return Err(Box::from("Patch file did not exist"));
+fn get_patch_file(args:&Args) -> Result<PatchSource, Box<dyn Error>> {
+    match (args.patch_file.as_ref(), args.patch_script.as_ref()) {
+        (Some(patch_file), None)=>{
+            let f = Path::new(&patch_file);
+            if f.exists() {
+                let fullpath = f.canonicalize()?;
+                Ok( PatchSource::DiffFile(fullpath) )
+            } else {
+                error!("💩 Patch file does not exist at {}", patch_file);
+                Err(Box::from("Patch file did not exist"))
+            }
+        },
+        (None, Some(patch_script))=>{
+            let f = Path::new(&patch_script);
+            if f.exists() {
+                let fullpath = f.canonicalize()?;
+                Ok( PatchSource::ScriptFile(fullpath) )
+            } else {
+                error!("💩 Patch script does not exist at {}", patch_script);
+                Err(Box::from("Patch script did not exist"))
+            }
+        },
+        _ => {
+            error!("💩 You need to specify either --patch-file or --patch-script, not both or neither");
+            Err(Box::from("Incorrect arguments"))
+        }
     }
 }
 

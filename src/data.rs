@@ -44,7 +44,8 @@ impl LocalRepo {
 pub struct PatchedRepo {
     pub repo:LocalRepo,
     pub changes:usize,
-    pub last_error:Option<String>
+    pub output:String,
+    pub success:bool
 }
 
 
