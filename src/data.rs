@@ -15,6 +15,18 @@ impl fmt::Display for RepoDefn {
     }
 }
 
+impl RepoDefn {
+    // Returns a URL suitable for cloning via SSH
+    pub fn clone_uri_ssh(&self) -> String {
+        format!("git@github.com:{}/{}", self.owner, self.name)
+    }
+
+    //Returns a URL suitable for cloning via SSH
+    pub fn clone_uri_https(&self) -> String {
+        format!("https://github.com/{}/{}", self.owner, self.name)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LocalRepo {
     pub defn: RepoDefn,
@@ -28,17 +40,13 @@ impl LocalRepo {
     }
 }
 
-impl RepoDefn {
-    // Returns a URL suitable for cloning via SSH
-    pub fn clone_uri_ssh(&self) -> String {
-        format!("git@github.com:{}/{}", self.owner, self.name)
-    }
-
-    //Returns a URL suitable for cloning via SSH
-    pub fn clone_uri_https(&self) -> String {
-        format!("https://github.com/{}/{}", self.owner, self.name)
-    }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PatchedRepo {
+    pub repo:LocalRepo,
+    pub changes:usize,
+    pub last_error:Option<String>
 }
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BaseDataDefn {
