@@ -6,3 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "4.5.20", features = ["derive"] }
+git2 = "0.19.0"
+octorust = { version = "0.7.0", features = ["openssl", "httpcache"] }
+serde = "1.0.211"
+serde_json = "1.0.132"
