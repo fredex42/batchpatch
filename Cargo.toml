@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.20", features = ["derive"] }
+colog = "1.3.0"
 git2 = "0.19.0"
+log = "0.4.22"
 octorust = { version = "0.7.0", features = ["openssl", "httpcache"] }
 serde = "1.0.211"
 serde_json = "1.0.132"

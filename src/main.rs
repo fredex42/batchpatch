@@ -9,9 +9,9 @@ use crate::data::load_datafile;
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::load_configfile;
+use data::{load_configfile, LocalRepo};
 use gitutils::build_git_client;
-
+use log::{info, warn};
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -31,6 +31,7 @@ fn homedir() -> String {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    colog::init();
     let args = Args::parse();
 
     let cfg_path = args.config_file
@@ -53,9 +54,30 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut gitclient = build_git_client(&cfg);
 
-    for repo in state.data.repos {
-        let local_repo = clone_repo(&mut gitclient, repo, "main", None, None)?;
-        println!("{:?}", local_repo);
+    let start_length = state.data.repos.len();
+    info!("⬇️ Downloading {} repos...", start_length);
+
+    let local_repos:Vec<Box<LocalRepo>> = state.data.repos
+        .into_iter()
+        .map(|repo| match clone_repo(&mut gitclient, repo, "main", None, None) {
+            Ok(repo)=>{
+                if repo.is_failed() {
+                    warn!("❌ {} - {}", repo.defn, repo.last_error.as_ref().unwrap());
+                } else {
+                    info!("✅ {}", repo.local_path.display() );
+                }
+                repo
+            },
+            Err(e)=>panic!("{}", e),
+        })
+        .filter(|repo| !repo.is_failed())
+        .collect();
+
+    if local_repos.len()==0 {
+        warn!("👎 No repos managed to download");
+        return Err(Box::from("No repos managed to download"))
     }
+
+    info!("👍 Downloaded {} repos; {} failed", local_repos.len(), start_length - local_repos.len());
     Ok( () )
 }

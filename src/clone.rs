@@ -1,6 +1,7 @@
 use git2::{build::RepoBuilder, ErrorCode};
 use crate::data::{RepoDefn, LocalRepo};
 use std::{error::Error, fs::create_dir_all, path::{Path, PathBuf}};
+use log::{info, warn};
 
 pub enum CloneMode {
     Ssh,
@@ -8,6 +9,8 @@ pub enum CloneMode {
 }
 
 //Clones the given repo to the current directory
+//This will only return an error if there is a system error creating the directory; otherwise, it will retrun a LocalRepo object containing the error description.
+//Check for this with LocalRepo::is_failed
 pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_override:Option<String>, mode:Option<CloneMode>) -> Result<Box<LocalRepo>, Box<dyn Error>> {
     let clone_path = match path_override {
         Some(p)=>{
@@ -29,21 +32,28 @@ pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_overr
         None => src.clone_uri_https(),
     };
 
-    println!("INFO Cloning {} into {}...", &clone_uri, clone_path.to_string_lossy());
+    info!("⬇️ Cloning {} into {}...", &clone_uri, clone_path.to_string_lossy());
     create_dir_all(clone_path.as_path())?;
 
     match client.branch(branch).clone(&clone_uri, clone_path.as_path()) {
-        Ok(_) =>     Ok( Box::new(LocalRepo {
+        Ok(_) => Ok( Box::new(LocalRepo {
             defn: src,
-            local_path: clone_path.to_owned().into()
+            local_path: clone_path.to_owned().into(),
+            last_error: None,
         }) ),
         Err(ref e@ git2::Error{..}) if e.code()==ErrorCode::Exists=>{
-            println!("WARNING {}", e.message());
+            //If we couldn't clone because there was already something there, that's OK
+            warn!("👉 {}", e.message());
             Ok( Box::new(LocalRepo {
                 defn: src,
-                local_path: clone_path.to_owned().into()
+                local_path: clone_path.to_owned().into(),
+                last_error: None,
             }) )
         },
-        Err(other)=>Err(Box::new(other))
+        Err(other)=>Ok( Box::new(LocalRepo {
+            defn: src,
+            local_path: clone_path.to_owned().into(),
+            last_error: Some(other.message().to_owned())
+        }) )
     }
 }

@@ -3,9 +3,7 @@ use git2::{build::RepoBuilder, Cred, RemoteCallbacks};
 
 pub fn build_git_client(config: &ConfigFile) -> RepoBuilder {
     let mut gitclient = git2::build::RepoBuilder::new();
-    
-    println!("{:?}", config);
-    
+
     //Do we have a github access token? If so then set it
     let fetch_opts = config.github_access_token.as_ref().map(|tok| {
         println!("INFO Configuring token authentication");

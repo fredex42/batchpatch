@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::{fs::File, path::Path};
 use serde::{Serialize, Deserialize};
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RepoDefn {
@@ -8,10 +9,23 @@ pub struct RepoDefn {
     pub name:String
 }
 
+impl fmt::Display for RepoDefn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}/{}", self.owner, self.name))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LocalRepo {
     pub defn: RepoDefn,
     pub local_path:Box<Path>,
+    pub last_error:Option<String>,
+}
+
+impl LocalRepo {
+    pub fn is_failed(&self) -> bool {
+        self.last_error.is_some()
+    }
 }
 
 impl RepoDefn {
