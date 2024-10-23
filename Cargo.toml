@@ -14,3 +14,4 @@ octorust = { version = "0.7.0", features = ["openssl", "httpcache"] }
 regex = "1.11.0"
 serde = "1.0.211"
 serde_json = "1.0.132"
+tempfile = "3.13.0"

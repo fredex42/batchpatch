@@ -43,35 +43,32 @@ pub fn read_repo_list(source:&Path, fault_tolerant:bool) -> Result<Box<BaseState
 mod test {
     //FIXME: need some kind of "afterEach" hook and better tempfile generation
     use std::path::PathBuf;
-
-    use io::Write;
+    use tempfile::NamedTempFile;
+    use std::io::Write;
 
     use super::*;
 
-    fn create_fixture() -> Result<PathBuf, Box<dyn Error>> {
-        let mut fixture_file = File::create("testfile.txt")?;
-
-        fixture_file.write("my-org/first_repo1\n".as_bytes())?;
-        fixture_file.write("https://github.com/my-org/first_repo2\n".as_bytes())?;
-        fixture_file.write("your0rg/another-repo\n".as_bytes())?;
-        Ok( Path::new("testfile.txt").canonicalize()? )
+    fn create_fixture(dest:&mut dyn Write) -> Result<(), Box<dyn Error>> {
+        dest.write("my-org/first_repo1\n".as_bytes())?;
+        dest.write("https://github.com/my-org/first_repo2\n".as_bytes())?;
+        dest.write("your0rg/another-repo\n".as_bytes())?;
+        Ok( () )
     }
 
-    fn create_problematic_fixtuire() -> Result<PathBuf, Box<dyn Error>> {
-        let mut fixture_file = File::create("testfile2.txt")?;
-
-        fixture_file.write("my-org/first_repo1\n".as_bytes())?;
-        fixture_file.write("my-org/first_repo2\n".as_bytes())?;
-        fixture_file.write("rogue line here!\n".as_bytes())?;
-        fixture_file.write("your0rg/another-repo\n".as_bytes())?;
-        Ok( Path::new("testfile2.txt").canonicalize()? )
+    fn create_problematic_fixture(dest:&mut dyn Write) -> Result<(), Box<dyn Error>> {
+        dest.write("my-org/first_repo1\n".as_bytes())?;
+        dest.write("my-org/first_repo2\n".as_bytes())?;
+        dest.write("rogue line here!\n".as_bytes())?;
+        dest.write("your0rg/another-repo\n".as_bytes())?;
+        Ok( () )
     }
 
     #[test]
     fn test_read_repo_list_ok() -> Result<(), Box<dyn Error>> {
-        let filepath = create_fixture()?;
+        let mut file = NamedTempFile::new()?;
+        create_fixture(&mut file)?;
         
-        let result = read_repo_list(&filepath, true)?;
+        let result = read_repo_list(file.path(), true)?;
         assert_eq!(result.data.repos[0].name, "first_repo1");
         assert_eq!(result.data.repos[0].owner, "my-org");
         assert_eq!(result.data.repos[1].name, "first_repo2");
@@ -84,9 +81,10 @@ mod test {
 
     #[test]
     fn test_read_repo_list_ok_strict() -> Result<(), Box<dyn Error>> {
-        let filepath = create_fixture()?;
+        let mut file = NamedTempFile::new()?;
+        create_fixture(&mut file)?;
         
-        let result = read_repo_list(&filepath, false)?;
+        let result = read_repo_list(file.path(), false)?;
         assert_eq!(result.data.repos[0].name, "first_repo1");
         assert_eq!(result.data.repos[0].owner, "my-org");
         assert_eq!(result.data.repos[1].name, "first_repo2");
@@ -99,9 +97,10 @@ mod test {
 
     #[test]
     fn test_read_repo_list_probs() -> Result<(), Box<dyn Error>> {
-        let filepath = create_problematic_fixtuire()?;
+        let mut file = NamedTempFile::new()?;
+        create_problematic_fixture(&mut file)?;
         
-        let result = read_repo_list(&filepath, true)?;
+        let result = read_repo_list(file.path(), true)?;
         assert_eq!(result.data.repos[0].name, "first_repo1");
         assert_eq!(result.data.repos[0].owner, "my-org");
         assert_eq!(result.data.repos[1].name, "first_repo2");
@@ -114,9 +113,10 @@ mod test {
 
     #[test]
     fn test_read_repo_list_probs_strict() -> Result<(), Box<dyn Error>> {
-        let filepath = create_problematic_fixtuire()?;
+        let mut file = NamedTempFile::new()?;
+        create_problematic_fixture(&mut file)?;
         
-        let result = read_repo_list(&filepath, false);
+        let result = read_repo_list(file.path(), false);
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Repository list was not in the right format");
