@@ -1,7 +1,8 @@
-use git2::{build::RepoBuilder, ErrorCode};
+use git2::{build::{CheckoutBuilder, RepoBuilder}, ErrorCode, ObjectType, Repository};
 use crate::data::{RepoDefn, LocalRepo};
 use std::{error::Error, fs::create_dir_all, path::PathBuf};
 use log::{info, warn};
+use std::path::Path;
 
 pub enum CloneMode {
     Ssh,
@@ -44,16 +45,52 @@ pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_overr
         Err(ref e@ git2::Error{..}) if e.code()==ErrorCode::Exists=>{
             //If we couldn't clone because there was already something there, that's OK
             warn!("👉 {}", e.message());
-            Ok( Box::new(LocalRepo {
-                defn: src,
-                local_path: clone_path.to_owned().into(),
-                last_error: None,
-            }) )
+            match clean_repo(clone_path.as_path(), "main") {
+                Ok(_) => 
+                    Ok( Box::new(LocalRepo {
+                        defn: src,
+                        local_path: clone_path.to_owned().into(),
+                        last_error: None,
+                    }) ),
+                Err(other) => {
+                    Ok( Box::new(LocalRepo {
+                        defn: src,
+                        local_path: clone_path.to_owned().into(),
+                        last_error: Some(other.to_string())
+                    }) )
+                }
+            }
         },
         Err(other)=>Ok( Box::new(LocalRepo {
             defn: src,
             local_path: clone_path.to_owned().into(),
             last_error: Some(other.message().to_owned())
         }) )
+    }
+}
+
+/**
+ * Performs a checkout and git reset to the given branch name. Overwrites any modifications.
+ */
+pub fn clean_repo(clone_path: &Path, branch:&str) -> Result<(), Box<dyn Error>> {
+    let mut repo = Repository::open(clone_path)?;
+
+    let mut cb = CheckoutBuilder::new();
+    cb.force();
+
+    info!("🛁 Resetting to {} and cleaning branch", branch);
+
+    let branch_ref = repo.find_branch(branch, git2::BranchType::Local)?;
+    let target_oid = branch_ref.into_reference().target();
+    match target_oid {
+        Some(oid)=>{
+            let obj = repo.find_object(oid, None)?;
+            repo.reset(&obj, git2::ResetType::Hard, Some(&mut cb))?;
+            Ok( () )
+        },
+        None=>{
+            warn!("🛑 Branch {} did not point to an object", branch);
+            Err(Box::from("Branch did not point to an object"))
+        }
     }
 }

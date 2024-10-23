@@ -174,7 +174,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let patched_repos_count = patched_repos.len();
     if patched_repos_count==0 {
-        warn!("👎 No repos managed to download");
+        warn!("👎 No repos managed to patch");
         return Err(Box::from("No repos managed to patch"))
     }
 
