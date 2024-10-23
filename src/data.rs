@@ -1,8 +1,11 @@
 use std::error::Error;
+use std::io::Write;
 use std::{fs::File, path::Path};
+use octorust::types::Base;
 use serde::{Serialize, Deserialize};
 use std::fmt;
 use regex::Regex;
+use log::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RepoDefn {
@@ -78,11 +81,34 @@ pub struct BaseStateDefn {
 }
 
 pub fn load_datafile(p:&Path) -> Result<BaseStateDefn, Box<dyn Error>> {
-    println!("INFO Loading state from {}...", p.display());
+    info!("Loading state from {}...", p.display());
     let file = File::open(p)?;
 
     let data:BaseStateDefn = serde_json::from_reader(file)?;
     Ok(data)
+}
+
+pub fn create_datafile(p:&Path) -> Result<BaseStateDefn, Box<dyn Error>> {
+    info!("Creating new statefile at {}...", p.display());
+    let mut file = File::create(p)?;
+
+    let data = BaseStateDefn {
+        data: BaseDataDefn {
+            repos: vec![],
+        }
+    };
+    let serialized = serde_json::to_string_pretty(&data)?;
+    file.write(serialized.as_bytes())?;
+    Ok( data )
+}
+
+pub fn write_datafile(p:&Path, data:&BaseStateDefn) -> Result<(), Box<dyn Error>> {
+    info!("🖊️ Writing updated state to {}...", p.display());
+    let mut file = File::create(p)?;
+
+    let serialized = serde_json::to_string_pretty(&data)?;
+    file.write(serialized.as_bytes())?;
+    Ok( () )
 }
 
 #[derive(Serialize, Deserialize, Debug)]

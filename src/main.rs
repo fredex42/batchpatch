@@ -3,6 +3,7 @@ mod clone;
 mod gitutils;
 mod patcher;
 mod list;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::error::Error;
 
@@ -10,8 +11,9 @@ use crate::data::load_datafile;
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::{load_configfile, LocalRepo, PatchedRepo};
+use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, LocalRepo, PatchedRepo};
 use gitutils::build_git_client;
+use list::read_repo_list;
 use log::{debug, info, warn, error};
 use patcher::{run_patch, PatchSource};
 
@@ -70,6 +72,39 @@ fn get_patch_file(args:&Args) -> Result<PatchSource, Box<dyn Error>> {
     }
 }
 
+fn initialise_state(args:&Args) -> Result<BaseStateDefn, Box<dyn Error>> {
+    let p = Path::new(&args.data_file);
+    match load_datafile(p) {
+        Ok(data)=>{
+            info!("👌 Loaded existing state from {}", p.display());
+            Ok(data)
+        },
+        Err(e)=>{
+            match e.downcast_ref::<std::io::Error>() {
+                Some(io_err)=>{
+                    if io_err.kind()==ErrorKind::NotFound {
+                        info!("🤚 Initialising new state in {}", p.display());
+                        match args.repo_list_file.as_ref() {
+                            Some(repo_list_str)=>{
+                                let repo_list_file = Path::new(repo_list_str);
+                                let new_state = read_repo_list(repo_list_file, false)?; //FIXME - allow fault-tolerance from args
+                                write_datafile(p, &new_state)?;
+                                Ok(*new_state)
+                            },
+                            None=>
+                                create_datafile(p)
+                        }
+                        
+                    } else {
+                        Err(e)
+                    }
+                },
+                None=>Err(e),
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     colog::init();
     let args = Args::parse();
@@ -90,11 +125,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let patch_file = get_patch_file(&args)?;
 
-    let p = Path::new(&args.data_file);
-    let state = load_datafile(p)?;
+    let mut state = initialise_state(&args)?;
+
     debug!("{:?}", state);
 
     let mut gitclient = build_git_client(&cfg);
+
+    if state.data.repos.len()==0 {
+        error!("😮 There are no repos to work on. Try adding --repo-list-file.");
+        return Err(Box::from("Nothing to do."));
+    }
 
     let start_length = state.data.repos.len();
     info!("⬇️ Downloading {} repos...", start_length);
