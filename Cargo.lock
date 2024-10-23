@@ -160,6 +160,7 @@ dependencies = [
  "git2",
  "log",
  "octorust",
+ "regex",
  "serde",
  "serde_json",
 ]

@@ -2,6 +2,7 @@ use std::error::Error;
 use std::{fs::File, path::Path};
 use serde::{Serialize, Deserialize};
 use std::fmt;
+use regex::Regex;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RepoDefn {
@@ -24,6 +25,23 @@ impl RepoDefn {
     //Returns a URL suitable for cloning via SSH
     pub fn clone_uri_https(&self) -> String {
         format!("https://github.com/{}/{}", self.owner, self.name)
+    }
+
+    pub fn new(from: &str) -> Result<RepoDefn, Box<dyn Error>> {
+        let simple_re = Regex::new(r"^(.+)/([^/]+)$").unwrap();
+        let url_re = Regex::new(r"^https?://github.com/([^/]+)/([^/]+)$").unwrap();
+
+        match (url_re.captures(from), simple_re.captures(from)) {
+            (Some(caps), _)=>{
+                let (_, [org, repo]) = caps.extract();
+                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string()})
+            },
+            (_, Some(caps))=>{
+                let (_, [org, repo]) = caps.extract();
+                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string()})
+            }
+            (None, None)=>Err(Box::from("Line was not in a valid format")),
+        }
     }
 }
 

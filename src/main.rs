@@ -2,7 +2,7 @@ mod data;
 mod clone;
 mod gitutils;
 mod patcher;
-
+mod list;
 use std::path::{Path, PathBuf};
 use std::error::Error;
 
@@ -18,6 +18,9 @@ use patcher::{run_patch, PatchSource};
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
+    #[arg(short, long)]
+    repo_list_file: Option<String>,
+
     #[arg(short, long)]
     data_file: String,
 
@@ -126,8 +129,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(repo)=>repo,
             Err(e)=>panic!("{}", e)
         })
-        .filter(|repo| repo.changes>0)
+        .filter(|repo| repo.success && repo.changes>0)
         .collect();
+
+    let patched_repos_count = patched_repos.len();
+    if patched_repos_count==0 {
+        warn!("👎 No repos managed to download");
+        return Err(Box::from("No repos managed to patch"))
+    }
 
     info!("👍 Patched {} repos; {} failed", patched_repos.len(), local_repos_count - patched_repos.len());
 
