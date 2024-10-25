@@ -1,11 +1,18 @@
 use std::error::Error;
 use std::io::Write;
 use std::{fs::File, path::Path};
-use octorust::types::Base;
 use serde::{Serialize, Deserialize};
 use std::fmt;
 use regex::Regex;
 use log::info;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DataElement {
+    BranchedRepo(BranchedRepo),
+    PatchedRepo(PatchedRepo),
+    LocalRepo(LocalRepo),
+    RemoteRepo(RepoDefn),
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RepoDefn {
@@ -71,8 +78,17 @@ pub struct PatchedRepo {
 
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchedRepo {
+    pub patched:PatchedRepo,
+    pub branch_name:String,
+    pub committed: bool,
+    pub pushed: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BaseDataDefn {
-    pub repos:Vec<RepoDefn>
+    pub repos:Vec<DataElement>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,7 +131,9 @@ pub fn write_datafile(p:&Path, data:&BaseStateDefn) -> Result<(), Box<dyn Error>
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFile {
     pub github_access_token: Option<String>,
+    pub git_ssh_key_path: Option<String>,
 }
+
 
 pub fn load_configfile(p:&Path) -> Result<ConfigFile, Box<dyn Error>> {
     let file = File::open(p)?;

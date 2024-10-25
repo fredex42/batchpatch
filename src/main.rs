@@ -11,10 +11,12 @@ use crate::data::load_datafile;
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, LocalRepo, PatchedRepo};
+use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement, LocalRepo, PatchedRepo};
 use gitutils::build_git_client;
 use list::read_repo_list;
 use log::{debug, info, warn, error};
+use octorust::git;
+use octorust::types::Data;
 use patcher::{run_patch, PatchSource};
 
 #[derive(Parser, Debug)]
@@ -72,33 +74,29 @@ fn get_patch_file(args:&Args) -> Result<PatchSource, Box<dyn Error>> {
     }
 }
 
-fn initialise_state(args:&Args) -> Result<BaseStateDefn, Box<dyn Error>> {
+fn initialise_state(args:&Args) -> Result<(BaseStateDefn, &Path), Box<dyn Error>> {
     let p = Path::new(&args.data_file);
     match load_datafile(p) {
         Ok(data)=>{
             info!("👌 Loaded existing state from {}", p.display());
-            Ok(data)
+            Ok( (data, p) )
         },
         Err(e)=>{
             match e.downcast_ref::<std::io::Error>() {
-                Some(io_err)=>{
-                    if io_err.kind()==ErrorKind::NotFound {
-                        info!("🤚 Initialising new state in {}", p.display());
-                        match args.repo_list_file.as_ref() {
-                            Some(repo_list_str)=>{
-                                let repo_list_file = Path::new(repo_list_str);
-                                let new_state = read_repo_list(repo_list_file, false)?; //FIXME - allow fault-tolerance from args
-                                write_datafile(p, &new_state)?;
-                                Ok(*new_state)
-                            },
-                            None=>
-                                create_datafile(p)
-                        }
-                        
-                    } else {
-                        Err(e)
+                Some(io_err) if io_err.kind()==ErrorKind::NotFound => {
+                    info!("🤚 Initialising new state in {}", p.display());
+                    match args.repo_list_file.as_ref() {
+                        Some(repo_list_str)=>{
+                            let repo_list_file = Path::new(repo_list_str);
+                            let new_state = read_repo_list(repo_list_file, false)?; //FIXME - allow fault-tolerance from args
+                            write_datafile(p, &new_state)?;
+                            Ok((*new_state, p))
+                        },
+                        None=>
+                            create_datafile(p).map(|datafile| (datafile, p))
                     }
                 },
+                Some(_)=>Err(e),
                 None=>Err(e),
             }
         }
@@ -125,7 +123,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let patch_file = get_patch_file(&args)?;
 
-    let mut state = initialise_state(&args)?;
+    let (mut state, state_file_path) = initialise_state(&args)?;
 
     debug!("{:?}", state);
 
@@ -139,23 +137,50 @@ fn main() -> Result<(), Box<dyn Error>> {
     let start_length = state.data.repos.len();
     info!("⬇️ Downloading {} repos...", start_length);
 
-    let local_repos:Vec<Box<LocalRepo>> = state.data.repos
+    state.data.repos = state.data.repos
         .into_iter()
-        .map(|repo| match clone_repo(&mut gitclient, repo, "main", None, None) {
-            Ok(repo)=>{
-                if repo.is_failed() {
-                    warn!("❌ {} - {}", repo.defn, repo.last_error.as_ref().unwrap());
-                } else {
-                    info!("✅ {}", repo.local_path.display() );
+        .map(|some_repo| match some_repo {
+            //FIXME - should be DRYer
+            DataElement::RemoteRepo(repo)=>{
+                match clone_repo(&mut gitclient, repo, "main", None, None) {
+                    Ok(local_repo)=>{
+                        if local_repo.is_failed() {
+                            warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
+                        } else {
+                            info!("✅ {}", local_repo.local_path.display() );
+                        }
+                        DataElement::LocalRepo(*local_repo)
+                    },
+                    Err(e)=>panic!("{}", e),
                 }
-                repo
             },
-            Err(e)=>panic!("{}", e),
+            DataElement::LocalRepo(local_repo) if local_repo.is_failed() =>{
+                match clone_repo(&mut gitclient, local_repo.defn, "main", None, None) {
+                    Ok(local_repo)=>{
+                        if local_repo.is_failed() {
+                            warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
+                        } else {
+                            info!("✅ {}", local_repo.local_path.display() );
+                        }
+                        DataElement::LocalRepo(*local_repo)
+                    },
+                    Err(e)=>panic!("{}", e),
+                }
+            }
+            other @ _=>other,
         })
-        .filter(|repo| !repo.is_failed())
         .collect();
 
-    let local_repos_count = local_repos.len();
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
+    let local_repos_count = state.data.repos.iter().filter(|r| match r {
+        DataElement::RemoteRepo(_)=>false,  //these were left due to failure
+        DataElement::LocalRepo(repo)=>repo.is_failed(), //false if failed to clone
+        DataElement::PatchedRepo(_)=>true,  //this can proceed
+        DataElement::BranchedRepo(_)=>true, //this can proceed
+    }).count();
+
     if local_repos_count==0 {
         warn!("👎 No repos managed to download");
         return Err(Box::from("No repos managed to download"))
@@ -163,22 +188,36 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     info!("👍 Downloaded {} repos; {} failed", local_repos_count, start_length - local_repos_count);
 
-    let patched_repos:Vec<Box<PatchedRepo>> = local_repos
+    state.data.repos = state.data.repos
         .into_iter()
-        .map(|repo| match run_patch(&patch_file, *repo) {
-            Ok(repo)=>repo,
-            Err(e)=>panic!("{}", e)
+        .map(|elmt| match elmt {
+            DataElement::LocalRepo(repo) if !repo.is_failed() =>match run_patch(&patch_file, repo) {
+                Ok(repo)=>DataElement::PatchedRepo(*repo),
+                Err(e)=>panic!("{}", e)
+            },
+            other @ _=>other,
         })
-        .filter(|repo| repo.success && repo.changes>0)
+        //.filter(|repo| repo.success && repo.changes>0)
         .collect();
 
-    let patched_repos_count = patched_repos.len();
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
+    let patched_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
+        DataElement::PatchedRepo(repo)=>repo.success && repo.changes>0,
+        DataElement::BranchedRepo(_)=>true,
+        _ => false,
+    }).count();
+
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
     if patched_repos_count==0 {
         warn!("👎 No repos managed to patch");
         return Err(Box::from("No repos managed to patch"))
     }
 
-    info!("👍 Patched {} repos; {} failed", patched_repos.len(), local_repos_count - patched_repos.len());
+    info!("👍 Patched {} repos; {} failed", patched_repos_count, local_repos_count - patched_repos_count);
 
     Ok( () )
 }

@@ -78,7 +78,7 @@ pub fn clean_repo(clone_path: &Path, branch:&str) -> Result<(), Box<dyn Error>> 
     let mut cb = CheckoutBuilder::new();
     cb.remove_untracked(true);
     cb.recreate_missing(true);
-    //cb.force();
+    cb.force();
 
     info!("🛁 Resetting to {} and cleaning branch", branch);
 

@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use log::warn;
-use crate::data::{BaseDataDefn, BaseStateDefn, RepoDefn};
+use crate::data::{BaseDataDefn, BaseStateDefn, DataElement, RepoDefn};
 
 pub fn read_repo_list(source:&Path, fault_tolerant:bool) -> Result<Box<BaseStateDefn>, Box<dyn Error>> {
     let file = File::open(source)?;
@@ -34,7 +34,7 @@ pub fn read_repo_list(source:&Path, fault_tolerant:bool) -> Result<Box<BaseState
         data: BaseDataDefn {
             repos: defs.into_iter()
                 .filter(|maybe_defn| maybe_defn.is_ok())
-                .map(|defn| defn.unwrap())
+                .map(|defn| DataElement::RemoteRepo(defn.unwrap()))
                 .collect()
         }
     }))
@@ -45,6 +45,8 @@ mod test {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
     use std::io::Write;
+
+    use crate::data::DataElement;
 
     use super::*;
 
@@ -69,12 +71,28 @@ mod test {
         create_fixture(&mut file)?;
         
         let result = read_repo_list(file.path(), true)?;
-        assert_eq!(result.data.repos[0].name, "first_repo1");
-        assert_eq!(result.data.repos[0].owner, "my-org");
-        assert_eq!(result.data.repos[1].name, "first_repo2");
-        assert_eq!(result.data.repos[1].owner, "my-org");
-        assert_eq!(result.data.repos[2].name, "another-repo");
-        assert_eq!(result.data.repos[2].owner, "your0rg");
+        match &result.data.repos[0] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo1");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("first element was not a RemoteRepo"))
+        }
+        match &result.data.repos[1] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo2");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("second element was not a RemoteRepo"))
+        }
+        match &result.data.repos[2] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "another-repo");
+                assert_eq!(repo_defn.owner, "your0rg");
+            },
+            _ => return Err(Box::from("third element was not a RemoteRepo"))
+        }
+
         assert_eq!(result.data.repos.len(), 3);
         Ok( () )
     }
@@ -85,12 +103,28 @@ mod test {
         create_fixture(&mut file)?;
         
         let result = read_repo_list(file.path(), false)?;
-        assert_eq!(result.data.repos[0].name, "first_repo1");
-        assert_eq!(result.data.repos[0].owner, "my-org");
-        assert_eq!(result.data.repos[1].name, "first_repo2");
-        assert_eq!(result.data.repos[1].owner, "my-org");
-        assert_eq!(result.data.repos[2].name, "another-repo");
-        assert_eq!(result.data.repos[2].owner, "your0rg");
+        match &result.data.repos[0] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo1");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("first element was not a RemoteRepo"))
+        }
+        match &result.data.repos[1] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo2");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("second element was not a RemoteRepo"))
+        }
+        match &result.data.repos[2] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "another-repo");
+                assert_eq!(repo_defn.owner, "your0rg");
+            },
+            _ => return Err(Box::from("third element was not a RemoteRepo"))
+        }
+
         assert_eq!(result.data.repos.len(), 3);
         Ok( () )
     }
@@ -101,12 +135,27 @@ mod test {
         create_problematic_fixture(&mut file)?;
         
         let result = read_repo_list(file.path(), true)?;
-        assert_eq!(result.data.repos[0].name, "first_repo1");
-        assert_eq!(result.data.repos[0].owner, "my-org");
-        assert_eq!(result.data.repos[1].name, "first_repo2");
-        assert_eq!(result.data.repos[1].owner, "my-org");
-        assert_eq!(result.data.repos[2].name, "another-repo");
-        assert_eq!(result.data.repos[2].owner, "your0rg");
+        match &result.data.repos[0] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo1");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("first element was not a RemoteRepo"))
+        }
+        match &result.data.repos[1] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "first_repo2");
+                assert_eq!(repo_defn.owner, "my-org");
+            },
+            _ => return Err(Box::from("second element was not a RemoteRepo"))
+        }
+        match &result.data.repos[2] {
+            DataElement::RemoteRepo(repo_defn)=>{
+                assert_eq!(repo_defn.name, "another-repo");
+                assert_eq!(repo_defn.owner, "your0rg");
+            },
+            _ => return Err(Box::from("third element was not a RemoteRepo"))
+        }
         assert_eq!(result.data.repos.len(), 3);
         Ok( () )
     }
