@@ -11,7 +11,7 @@ use crate::data::load_datafile;
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement, LocalRepo, PatchedRepo};
+use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement};
 use git2::Signature;
 use gitutils::{build_git_client, do_commit, load_users_git_config, GitConfig};
 use list::read_repo_list;

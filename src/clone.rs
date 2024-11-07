@@ -1,7 +1,7 @@
-use git2::{build::{CheckoutBuilder, RepoBuilder}, ErrorCode, ObjectType, Repository};
+use git2::{build::{CheckoutBuilder, RepoBuilder}, ErrorCode, Repository};
 use crate::data::{RepoDefn, LocalRepo};
 use std::{error::Error, fs::create_dir_all, path::PathBuf};
-use log::{info, warn, debug};
+use log::{info, warn};
 use std::path::Path;
 
 pub enum CloneMode {
