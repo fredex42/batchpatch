@@ -14,7 +14,7 @@ pub enum DataElement {
     RemoteRepo(RepoDefn),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoDefn {
     pub owner:String,
     pub name:String
@@ -55,7 +55,7 @@ impl RepoDefn {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LocalRepo {
     pub defn: RepoDefn,
     pub local_path:Box<Path>,
@@ -68,7 +68,7 @@ impl LocalRepo {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PatchedRepo {
     pub repo:LocalRepo,
     pub changes:usize,
@@ -77,13 +77,14 @@ pub struct PatchedRepo {
 }
 
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchedRepo {
     pub patched:PatchedRepo,
     pub branch_name:String,
     pub committed: bool,
     pub pushed: bool,
+    pub last_error: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -98,6 +98,24 @@ pub struct GitUser {
     pub signing_key: Option<String>,
 }
 
+impl From<&GitUser> for Signature<'_> {
+    fn from(item: &GitUser) -> Self {
+        match Signature::now(&item.name, &item.email) {
+            Ok(sig)=>sig,
+            Err(e)=>panic!("{}", e)
+        }
+    }
+}
+
+impl From<GitUser> for Signature<'_> {
+    fn from(item: GitUser) -> Self {
+        match Signature::now(&item.name, &item.email) {
+            Ok(sig)=>sig,
+            Err(e)=>panic!("{}", e)
+        }
+    }
+}
+
 pub struct GitConfig {
     pub user:Option<GitUser>,
 }
@@ -182,28 +200,23 @@ pub fn build_git_client(config: &ConfigFile) -> RepoBuilder {
  * do_commit creates a new branch on the given repo and commits the current working state with the given commit log.
  * See https://stackoverflow.com/questions/27672722/libgit2-commit-example
  */
-pub fn do_commit(repo: &LocalRepo, git_config:&GitConfig, branch_name:&str, commit_log:&str) -> Result<(), Box<dyn Error>> {
-    match git_config.user.as_ref() {
-        Some(user_info)=>{
-            let repo = Repository::open(&repo.local_path)?;
-            let sig = Signature::now(&user_info.name, &user_info.email)?;
+pub fn do_commit(repo: &LocalRepo, sig:&Signature, branch_name:&str, commit_log:&str) -> Result<(), Box<dyn Error>> {
+    let repo = Repository::open(&repo.local_path)?;
+    //let sig = Signature::now(&user_info.name, &user_info.email)?;
 
-            //Get the current index and write it to a tree
-            let mut index = repo.index()?;
-            let oid = index.write_tree()?;
-            let tree = repo.find_tree(oid)?;
-            
-            //Use the current HEAD as the parent of the new commit
-            let head = repo.head()?;
-            let head_commit =head.peel_to_commit()?;
-            let parents = [&head_commit];
+    //Get the current index and write it to a tree
+    let mut index = repo.index()?;
+    let oid = index.write_tree()?;
+    let tree = repo.find_tree(oid)?;
+    
+    //Use the current HEAD as the parent of the new commit
+    let head = repo.head()?;
+    let head_commit =head.peel_to_commit()?;
+    let parents = [&head_commit];
 
-            //FIXME - how does this work?!
-            repo.commit(Some(branch_name), &sig, &sig, commit_log, &tree, &parents)?;
-            Ok( () )
-        },
-        None=> Err( Box::from("no user configured in git config") )
-    }
+    //FIXME - how does this work?!
+    repo.commit(Some(branch_name), &sig, &sig, commit_log, &tree, &parents)?;
+    Ok( () )
 }
 
 mod test {

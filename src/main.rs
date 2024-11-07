@@ -12,10 +12,10 @@ use crate::clone::clone_repo;
 
 use clap::Parser;
 use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement, LocalRepo, PatchedRepo};
-use gitutils::{build_git_client, load_users_git_config, GitConfig};
+use git2::Signature;
+use gitutils::{build_git_client, do_commit, load_users_git_config, GitConfig};
 use list::read_repo_list;
 use log::{debug, info, warn, error};
-use octorust::git;
 use octorust::types::{Data, GitCommit};
 use patcher::{run_patch, PatchSource};
 
@@ -35,7 +35,11 @@ struct Args {
     patch_file: Option<String>,
 
     #[arg(long)]
-    patch_script: Option<String>
+    patch_script: Option<String>,
+
+    #[arg(long)]
+    //Optional commit message to use. If this is not specified, then a default will be generated
+    msg: Option<String>
 }
 
 fn homedir() -> String {
@@ -111,6 +115,17 @@ fn dump_user_info(cfg:&GitConfig) {
         None=>{
             warn!("There is no user configuration in git!")
         }
+    }
+}
+
+fn get_commit_msg(args:&Args) -> String {
+    match args.msg.as_ref() {
+        Some(custom_msg) => custom_msg.to_owned(),
+        None => match (args.patch_file.as_ref(), args.patch_script.as_ref()) {
+            (Some(patch_file), _)=>format!("Batchpatch applied the patch file {}", patch_file),
+            (_, Some(patch_script))=>format!("Batchpatch applied the script {}", patch_script),
+            _ => format!("Batchpatch applied an operation")
+        } 
     }
 }
 
@@ -245,6 +260,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     //         other @_ => other
     //     })
     //     .collect();
+
+    state.data.repos = state.data.repos
+        .into_iter()
+        .map(|elmt| match elmt {
+            DataElement::BranchedRepo(repo) if !repo.committed=>{
+                //`unwrap` here is safe, because we already errored at the start if this was not set.
+                let sig:Signature = git_config.user.as_ref().unwrap().into();
+                let commit_log = get_commit_msg(&args);
+
+                match do_commit(&repo.patched.repo, &sig, &repo.branch_name, &commit_log){
+                    Ok(_)=>{
+                        let mut updated = repo.clone();
+                        updated.committed = true;
+                        DataElement::BranchedRepo(updated)
+                    },
+                    Err(e)=>{
+                        let mut updated = repo.clone();
+                        updated.committed = false;
+                        updated.last_error = Some( e.to_string() );
+                        DataElement::BranchedRepo(updated)
+                    }
+                }
+            },
+            other @_=> other
+        })
+        .collect();
+
+    let committed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
+        DataElement::BranchedRepo(repo) if repo.committed || repo.pushed => true,
+        _=>false
+    }).count();
+
+    if committed_repos_count==0 {
+        warn!("👎 No repos managed to commit");
+        return Err(Box::from("No repos managed to commit"))
+    }
+
+    info!("👍 Committed {} repos; {} failed", committed_repos_count, patched_repos_count - committed_repos_count);
 
     Ok( () )
 }
