@@ -12,11 +12,11 @@ use crate::clone::clone_repo;
 
 use clap::Parser;
 use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement, LocalRepo, PatchedRepo};
-use gitutils::build_git_client;
+use gitutils::{build_git_client, load_users_git_config, GitConfig};
 use list::read_repo_list;
 use log::{debug, info, warn, error};
 use octorust::git;
-use octorust::types::Data;
+use octorust::types::{Data, GitCommit};
 use patcher::{run_patch, PatchSource};
 
 #[derive(Parser, Debug)]
@@ -103,6 +103,17 @@ fn initialise_state(args:&Args) -> Result<(BaseStateDefn, &Path), Box<dyn Error>
     }
 }
 
+fn dump_user_info(cfg:&GitConfig) {
+    match &cfg.user {
+        Some(userinfo)=>{
+            info!("Commits will be made by {}<{}>", userinfo.name, userinfo.email);
+        },
+        None=>{
+            warn!("There is no user configuration in git!")
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     colog::init();
     let args = Args::parse();
@@ -118,6 +129,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             p
         });
 
+    //We need a git config file
+    let git_config = load_users_git_config()?;
+    if git_config.user.is_none() {
+        error!("You must have your user information configured in git before running this. Try git config --global user.name \"FIRST_NAME LAST_NAME\" and/or git config --global user.email \"MY_NAME@example.com\" ");
+        return Err ( Box::from("git was not properly configured"))
+    }
+    dump_user_info(&git_config);
+   
     info!("Reading config from {}", cfg_path.as_path().display());
     let cfg = load_configfile(&cfg_path)?;
 
@@ -200,8 +219,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         //.filter(|repo| repo.success && repo.changes>0)
         .collect();
 
-    //Update our state on-disk so we can resume
-    write_datafile(state_file_path, &state)?;
 
     let patched_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
         DataElement::PatchedRepo(repo)=>repo.success && repo.changes>0,
@@ -218,6 +235,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     info!("👍 Patched {} repos; {} failed", patched_repos_count, local_repos_count - patched_repos_count);
+
+    // state.data.repos = state.data.repos
+    //     .into_iter()
+    //     .map(|elmt| match elmt {
+    //         DataElement::PatchedRepo(repo)=>match do_branch() {
+
+    //         },
+    //         other @_ => other
+    //     })
+    //     .collect();
 
     Ok( () )
 }
