@@ -3,6 +3,7 @@ mod clone;
 mod gitutils;
 mod patcher;
 mod list;
+mod gitconfig;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::error::Error;
@@ -11,9 +12,10 @@ use crate::data::load_datafile;
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, DataElement};
+use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, BranchedRepo, DataElement};
 use git2::Signature;
-use gitutils::{build_git_client, do_commit, load_users_git_config, GitConfig};
+use gitutils::{build_git_client, do_branch, do_commit};
+use gitconfig::{load_users_git_config, GitConfig};
 use list::read_repo_list;
 use log::{debug, info, warn, error};
 use octorust::types::{Data, GitCommit};
@@ -39,7 +41,11 @@ struct Args {
 
     #[arg(long)]
     //Optional commit message to use. If this is not specified, then a default will be generated
-    msg: Option<String>
+    msg: Option<String>,
+
+    #[arg(long)]
+    //Branch name to use
+    branch_name: String
 }
 
 fn homedir() -> String {
@@ -251,15 +257,55 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     info!("👍 Patched {} repos; {} failed", patched_repos_count, local_repos_count - patched_repos_count);
 
-    // state.data.repos = state.data.repos
-    //     .into_iter()
-    //     .map(|elmt| match elmt {
-    //         DataElement::PatchedRepo(repo)=>match do_branch() {
+    state.data.repos = state.data.repos
+        .into_iter()
+        .map(|elmt| match elmt {
+            DataElement::PatchedRepo(repo) if repo.success && repo.changes>0=>match do_branch(&repo.repo, &args.branch_name) {
+                Ok(_)=>DataElement::BranchedRepo(BranchedRepo{
+                    patched: repo,
+                    branch_name: args.branch_name.to_owned(),
+                    committed: false,
+                    pushed: false,
+                    last_error: None,
+                }),
+                Err(e)=>DataElement::BranchedRepo(BranchedRepo{
+                    patched: repo,
+                    branch_name: args.branch_name.to_owned(),
+                    committed: false,
+                    pushed: false,
+                    last_error: Some(e.to_string())
+                })
+            },
+            DataElement::BranchedRepo(repo) if repo.last_error.is_some() && repo.committed==false =>
+            match do_branch(&repo.patched.repo, &args.branch_name) {
+                Ok(_)=>DataElement::BranchedRepo(BranchedRepo{
+                    patched: repo.patched,
+                    branch_name: args.branch_name.to_owned(),
+                    committed: false,
+                    pushed: false,
+                    last_error: None,
+                }),
+                Err(e)=>DataElement::BranchedRepo(BranchedRepo{
+                    patched: repo.patched,
+                    branch_name: args.branch_name.to_owned(),
+                    committed: false,
+                    pushed: false,
+                    last_error: Some(e.to_string())
+                })
+            },
+            other @_ => other
+        })
+        .collect();
 
-    //         },
-    //         other @_ => other
-    //     })
-    //     .collect();
+    let branched_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
+        DataElement::BranchedRepo(repo)=>repo.last_error.is_none() && !repo.committed,
+        _ => false,
+    }).count();
+
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
+    info!("👍 Branched {} repos; {} failed", branched_repos_count, patched_repos_count - branched_repos_count);
 
     state.data.repos = state.data.repos
         .into_iter()
@@ -297,7 +343,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(Box::from("No repos managed to commit"))
     }
 
-    info!("👍 Committed {} repos; {} failed", committed_repos_count, patched_repos_count - committed_repos_count);
+    info!("👍 Committed {} repos; {} failed", committed_repos_count, branched_repos_count - committed_repos_count);
 
     Ok( () )
 }
