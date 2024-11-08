@@ -215,10 +215,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_datafile(state_file_path, &state)?;
 
     let local_repos_count = state.data.repos.iter().filter(|r| match r {
-        DataElement::RemoteRepo(_)=>false,  //these were left due to failure
-        DataElement::LocalRepo(repo)=>repo.is_failed(), //false if failed to clone
-        DataElement::PatchedRepo(_)=>true,  //this can proceed
-        DataElement::BranchedRepo(_)=>true, //this can proceed
+        DataElement::LocalRepo(repo)=>!repo.is_failed(), //false if failed to clone
+        _=>true,  //this can proceed
     }).count();
 
     if local_repos_count==0 {
@@ -261,37 +259,49 @@ fn main() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .map(|elmt| match elmt {
             DataElement::PatchedRepo(repo) if repo.success && repo.changes>0=>match do_branch(&repo.repo, &args.branch_name) {
-                Ok(_)=>DataElement::BranchedRepo(BranchedRepo{
-                    patched: repo,
-                    branch_name: args.branch_name.to_owned(),
-                    committed: false,
-                    pushed: false,
-                    last_error: None,
-                }),
-                Err(e)=>DataElement::BranchedRepo(BranchedRepo{
-                    patched: repo,
-                    branch_name: args.branch_name.to_owned(),
-                    committed: false,
-                    pushed: false,
-                    last_error: Some(e.to_string())
-                })
+                Ok(_)=>{
+                    info!("Successfully branched repo");
+                    DataElement::BranchedRepo(BranchedRepo{
+                        patched: repo,
+                        branch_name: args.branch_name.to_owned(),
+                        committed: false,
+                        pushed: false,
+                        last_error: None,
+                    })
+                },
+                Err(e)=>{
+                    error!("Unable to branch repo: {}", e);
+                    DataElement::BranchedRepo(BranchedRepo{
+                        patched: repo,
+                        branch_name: args.branch_name.to_owned(),
+                        committed: false,
+                        pushed: false,
+                        last_error: Some(e.to_string())
+                    })
+                }
             },
             DataElement::BranchedRepo(repo) if repo.last_error.is_some() && repo.committed==false =>
             match do_branch(&repo.patched.repo, &args.branch_name) {
-                Ok(_)=>DataElement::BranchedRepo(BranchedRepo{
-                    patched: repo.patched,
-                    branch_name: args.branch_name.to_owned(),
-                    committed: false,
-                    pushed: false,
-                    last_error: None,
-                }),
-                Err(e)=>DataElement::BranchedRepo(BranchedRepo{
-                    patched: repo.patched,
-                    branch_name: args.branch_name.to_owned(),
-                    committed: false,
-                    pushed: false,
-                    last_error: Some(e.to_string())
-                })
+                Ok(_)=>{
+                    info!("Successfully branched repo");
+                    DataElement::BranchedRepo(BranchedRepo{
+                        patched: repo.patched,
+                        branch_name: args.branch_name.to_owned(),
+                        committed: false,
+                        pushed: false,
+                        last_error: None,
+                    })
+                },
+                Err(e)=>{
+                    error!("Unable to branch repo: {}", e);
+                    DataElement::BranchedRepo(BranchedRepo{
+                        patched: repo.patched,
+                        branch_name: args.branch_name.to_owned(),
+                        committed: false,
+                        pushed: false,
+                        last_error: Some(e.to_string())
+                    })
+                }
             },
             other @_ => other
         })
@@ -310,7 +320,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     state.data.repos = state.data.repos
         .into_iter()
         .map(|elmt| match elmt {
-            DataElement::BranchedRepo(repo) if !repo.committed=>{
+            DataElement::BranchedRepo(repo) if !repo.committed && repo.last_error.is_none()=>{
                 //`unwrap` here is safe, because we already errored at the start if this was not set.
                 let sig:Signature = git_config.user.as_ref().unwrap().into();
                 let commit_log = get_commit_msg(&args);
@@ -322,6 +332,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         DataElement::BranchedRepo(updated)
                     },
                     Err(e)=>{
+                        error!("👎 Unable to commit {}: {}", repo.patched.repo.defn, e.to_string());
                         let mut updated = repo.clone();
                         updated.committed = false;
                         updated.last_error = Some( e.to_string() );

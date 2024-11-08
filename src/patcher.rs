@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use std::{ffi::OsString, path::Path};
 use std::error::Error;
 use std::process::Command;
-use log::{info, debug};
-use git2::Repository;
+use log::{info, debug, error};
+use git2::{Index, IndexAddOption, IndexEntry, Repository};
+use octorust::repos::Repos;
+use octorust::types::Repo;
 
 use crate::data::{LocalRepo, PatchedRepo};
 
@@ -62,8 +64,7 @@ fn apply_patch_script(script_file: &Path, target: &LocalRepo) -> Result<String, 
     }
 }
 
-fn assess_changes(target: &LocalRepo) -> Result<usize, Box<dyn Error>>{
-    let repo = Repository::open(target.local_path.as_ref())?;
+fn assess_changes(repo: &Repository) -> Result<usize, Box<dyn Error>>{
     let diffs = repo.diff_tree_to_workdir_with_index(None, None)?;
     let stats = diffs.stats()?;
     Ok(stats.files_changed())
@@ -77,11 +78,13 @@ pub fn run_patch(patchfile: &PatchSource, target: LocalRepo) -> Result<Box<Patch
         PatchSource::ScriptFile(path)=>apply_patch_script(path, &target)
     };
 
+    let repo = Repository::open(target.local_path.as_ref())?;
+
     match result {
         Ok(msg)=>{
-            let file_updates = assess_changes(&target)?;
+            let file_updates = assess_changes(&repo)?;
             info!("👌 Patched successfully; {} files were updated", file_updates);
-            
+
             Ok( Box::new(PatchedRepo {
                 repo: target,
                 changes: file_updates,
