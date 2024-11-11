@@ -4,6 +4,7 @@ mod gitutils;
 mod patcher;
 mod list;
 mod gitconfig;
+mod push;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::error::Error;
@@ -13,13 +14,14 @@ use crate::clone::clone_repo;
 
 use clap::Parser;
 use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, BranchedRepo, DataElement};
-use git2::Signature;
+use git2::{Branch, Signature};
 use gitutils::{build_git_client, do_branch, do_commit};
 use gitconfig::{load_users_git_config, GitConfig};
 use list::read_repo_list;
 use log::{debug, info, warn, error};
 use octorust::types::{Data, GitCommit};
 use patcher::{run_patch, PatchSource};
+use push::do_push;
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -344,6 +346,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         })
         .collect();
 
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
     let committed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
         DataElement::BranchedRepo(repo) if repo.committed || repo.pushed => true,
         _=>false
@@ -355,6 +360,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     info!("👍 Committed {} repos; {} failed", committed_repos_count, branched_repos_count - committed_repos_count);
+
+    state.data.repos = state.data.repos
+        .into_iter()
+        .map(|elmt| match elmt {
+            DataElement::BranchedRepo(repo) if repo.committed && !repo.pushed => match do_push(&repo) {
+               Ok(_)=>{
+                let mut updated = repo.clone();
+
+                updated.last_error = None;
+                updated.pushed = true;
+                DataElement::BranchedRepo(updated)
+               },
+               Err(e)=>{
+                error!("👎 Unable to push {}: {}", repo.patched.repo.defn, e.to_string());
+                let mut updated = repo.clone();
+                updated.last_error = Some(e.to_string());
+                updated.pushed = false;
+                DataElement::BranchedRepo(updated)
+               }
+            },
+            other @_ => other,
+        })
+        .collect();
+
+    //Update our state on-disk so we can resume
+    write_datafile(state_file_path, &state)?;
+
+    let pushed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
+        DataElement::BranchedRepo(repo) if repo.pushed => true,
+        _=>false
+    }).count();
+
+    if pushed_repos_count==0 {
+        warn!("👎 No repos managed to push");
+        return Err(Box::from("No repos managed to push"))
+    }
+
+    info!("👍 Pushed {} repos; {} failed", pushed_repos_count,  committed_repos_count - pushed_repos_count);
 
     Ok( () )
 }

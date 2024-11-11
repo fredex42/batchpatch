@@ -120,6 +120,5 @@ pub fn do_commit(repo: &LocalRepo, sig:&Signature, branch_name:&str, commit_log:
         }
     };
 
-
     result
 }
