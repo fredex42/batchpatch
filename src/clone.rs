@@ -1,18 +1,13 @@
 use git2::{build::RepoBuilder, ErrorCode};
-use crate::data::{RepoDefn, LocalRepo};
+use crate::data::{RepoDefn, LocalRepo, CloneMode};
 use std::{error::Error, fs::create_dir_all, path::PathBuf};
 use log::{info, warn};
 use crate::gitutils::clean_repo_by_path;
 
-pub enum CloneMode {
-    Ssh,
-    Https
-}
-
 //Clones the given repo to the current directory
 //This will only return an error if there is a system error creating the directory; otherwise, it will retrun a LocalRepo object containing the error description.
 //Check for this with LocalRepo::is_failed
-pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_override:Option<String>, mode:Option<CloneMode>) -> Result<Box<LocalRepo>, Box<dyn Error>> {
+pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_override:Option<String>, mode:&CloneMode) -> Result<Box<LocalRepo>, Box<dyn Error>> {
     let clone_path = match path_override {
         Some(p)=>{
             let mut buf = PathBuf::new();
@@ -28,9 +23,8 @@ pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_overr
     };
 
     let clone_uri = match mode {
-        Some(CloneMode::Ssh) => src.clone_uri_ssh(),
-        Some(CloneMode::Https) => src.clone_uri_https(),
-        None => src.clone_uri_https(),
+        CloneMode::Ssh => src.clone_uri_ssh(),
+        CloneMode::Https => src.clone_uri_https(),
     };
 
     info!("⬇️ Cloning {} into {}...", &clone_uri, clone_path.to_string_lossy());

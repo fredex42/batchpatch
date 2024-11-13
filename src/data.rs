@@ -14,6 +14,22 @@ pub enum DataElement {
     RemoteRepo(RepoDefn),
 }
 
+
+pub enum CloneMode {
+    Ssh,
+    Https
+}
+
+impl From<&String> for CloneMode {
+    fn from(value: &String) -> Self {
+        match value.to_lowercase().as_str() {
+            "https"=>CloneMode::Https,
+            "http"=>CloneMode::Https,
+            _=>CloneMode::Ssh
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoDefn {
     pub owner:String,
@@ -35,6 +51,13 @@ impl RepoDefn {
     //Returns a URL suitable for cloning via SSH
     pub fn clone_uri_https(&self) -> String {
         format!("https://github.com/{}/{}", self.owner, self.name)
+    }
+
+    pub fn clone_uri(&self, mode:CloneMode) -> String {
+        match mode {
+            CloneMode::Ssh=>self.clone_uri_ssh(),
+            CloneMode::Https=>self.clone_uri_https()
+        }
     }
 
     pub fn new(from: &str) -> Result<RepoDefn, Box<dyn Error>> {
@@ -140,4 +163,11 @@ pub fn load_configfile(p:&Path) -> Result<ConfigFile, Box<dyn Error>> {
     let file = File::open(p)?;
     let data:ConfigFile = serde_json::from_reader(file)?;
     Ok(data)
+}
+
+pub fn homedir() -> String {
+    match std::env::var("HOME") {
+        Ok(v)=>v,
+        Err(_)=>"".to_string(),
+    }
 }

@@ -9,11 +9,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::error::Error;
 
-use crate::data::load_datafile;
+use crate::data::{load_datafile, homedir};
 use crate::clone::clone_repo;
 
 use clap::Parser;
-use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, BranchedRepo, DataElement};
+use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, BranchedRepo, CloneMode, DataElement};
 use git2::{Branch, Signature};
 use gitutils::{build_git_client, do_branch, do_commit};
 use gitconfig::{load_users_git_config, GitConfig};
@@ -26,35 +26,29 @@ use push::do_push;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(short, long, help="Path to a list of repositories, one per line, in the format {org}/{repo-name}")]
     repo_list_file: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(short, long, help="File to use for persisting state. The first time you run, this file is created; subsequent runs use it to pick up where the last one left off")]
     data_file: String,
 
-    #[arg(short, long)]
+    #[arg(short, long, help="Application config file, see docs")]
     config_file: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(short, long, help="If you want to apply a .diff file with the patch utility (*nix/Mac only) then specify the path to the .diff here.")]
     patch_file: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, help="If you want to run an arbitary script/program on the repo (any platform) then specify the path here. You must use either --patch-file or --patch-script")]
     patch_script: Option<String>,
 
-    #[arg(long)]
-    //Optional commit message to use. If this is not specified, then a default will be generated
+    #[arg(long, help="Optional commit message to use. If this is not specified, then a default will be generated")]
     msg: Option<String>,
 
-    #[arg(long)]
-    //Branch name to use
-    branch_name: String
-}
+    #[arg(long, help="New branch name to create. A repo will fail to patch if this branch already exists.")]
+    branch_name: String,
 
-fn homedir() -> String {
-    match std::env::var("HOME") {
-        Ok(v)=>v,
-        Err(_)=>"".to_string(),
-    }
+    #[arg(long, help="Cloning mode - whether to use SSH (the default) or HTTPS")]
+    mode: String
 }
 
 fn get_patch_file(args:&Args) -> Result<PatchSource, Box<dyn Error>> {
@@ -152,6 +146,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             p
         });
 
+    let clone_mode:CloneMode = (&args.mode).into();
+
     //We need a git config file
     let git_config = load_users_git_config()?;
     if git_config.user.is_none() {
@@ -169,7 +165,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     debug!("{:?}", state);
 
-    let mut gitclient = build_git_client(&cfg);
+    let mut repobuilder = build_git_client(&cfg);
 
     if state.data.repos.len()==0 {
         error!("😮 There are no repos to work on. Try adding --repo-list-file.");
@@ -184,7 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|some_repo| match some_repo {
             //FIXME - should be DRYer
             DataElement::RemoteRepo(repo)=>{
-                match clone_repo(&mut gitclient, repo, "main", None, None) {
+                match clone_repo(&mut repobuilder, repo, "main", None, &clone_mode) {
                     Ok(local_repo)=>{
                         if local_repo.is_failed() {
                             warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
@@ -197,7 +193,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             },
             DataElement::LocalRepo(local_repo) if local_repo.is_failed() =>{
-                match clone_repo(&mut gitclient, local_repo.defn, "main", None, None) {
+                match clone_repo(&mut repobuilder, local_repo.defn, "main", None, &clone_mode) {
                     Ok(local_repo)=>{
                         if local_repo.is_failed() {
                             warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
