@@ -1,6 +1,6 @@
 use crate::data::{homedir, CloneMode, ConfigFile};
 use git2::RemoteCallbacks;
-use log::debug;
+use log::{debug, info};
 use std::path::{Path, PathBuf};
 use std::env;
 
@@ -61,6 +61,9 @@ fn git_ssh_auth(user: &str, maybe_key:Option<&String>) -> Result<git2::Cred, git
             pb
         }
     };
+
+    info!("🔑 Authenticating with SSH key {}", keypath.display());
+
     //FIXME: Handle passphrase
     git2::Cred::ssh_key(user, None, keypath.as_path(), None)
 }
