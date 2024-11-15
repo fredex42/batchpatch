@@ -30,6 +30,28 @@ impl From<&String> for CloneMode {
     }
 }
 
+impl Clone for CloneMode {
+    fn clone(&self) -> Self {
+        match self {
+            CloneMode::Ssh=>CloneMode::Ssh,
+            CloneMode::Https=>CloneMode::Https,
+        }
+    }
+}
+
+impl CloneMode {
+    pub fn from_url(url: &str) -> Option<CloneMode> {
+        let ssh_uri_re = Regex::new("^\\w+@[\\w\\d\\.]+:.*").unwrap();
+        if url.starts_with("http") {
+            Some(CloneMode::Https)
+        } else if ssh_uri_re.is_match(url) {
+            Some(CloneMode::Ssh)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoDefn {
     pub owner:String,

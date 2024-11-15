@@ -1,5 +1,5 @@
-use git2::{build::RepoBuilder, ErrorCode};
-use crate::data::{RepoDefn, LocalRepo, CloneMode};
+use git2::{build::RepoBuilder, ErrorCode, FetchOptions};
+use crate::{data::{CloneMode, ConfigFile, LocalRepo, RepoDefn}, remote_callbacks::configure_callbacks};
 use std::{error::Error, fs::create_dir_all, path::PathBuf};
 use log::{info, warn};
 use crate::gitutils::clean_repo_by_path;
@@ -7,7 +7,7 @@ use crate::gitutils::clean_repo_by_path;
 //Clones the given repo to the current directory
 //This will only return an error if there is a system error creating the directory; otherwise, it will retrun a LocalRepo object containing the error description.
 //Check for this with LocalRepo::is_failed
-pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_override:Option<String>, mode:&CloneMode) -> Result<Box<LocalRepo>, Box<dyn Error>> {
+pub fn clone_repo<'a, 'b>(client:&'a mut RepoBuilder<'b>, src:RepoDefn, branch:&str, path_override:Option<String>, mode:&'b CloneMode, app_config:&ConfigFile) -> Result<Box<LocalRepo>, Box<dyn Error>> {
     let clone_path = match path_override {
         Some(p)=>{
             let mut buf = PathBuf::new();
@@ -26,6 +26,10 @@ pub fn clone_repo(client:&mut RepoBuilder, src:RepoDefn, branch:&str, path_overr
         CloneMode::Ssh => src.clone_uri_ssh(),
         CloneMode::Https => src.clone_uri_https(),
     };
+
+    let mut opts:FetchOptions<'b> = FetchOptions::new();
+    opts.remote_callbacks(configure_callbacks(Some(mode), app_config));
+    client.fetch_options(opts);
 
     info!("⬇️ Cloning {} into {}...", &clone_uri, clone_path.to_string_lossy());
     create_dir_all(clone_path.as_path())?;

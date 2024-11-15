@@ -5,6 +5,7 @@ mod patcher;
 mod list;
 mod gitconfig;
 mod push;
+mod remote_callbacks;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::error::Error;
@@ -180,7 +181,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|some_repo| match some_repo {
             //FIXME - should be DRYer
             DataElement::RemoteRepo(repo)=>{
-                match clone_repo(&mut repobuilder, repo, "main", None, &clone_mode) {
+                match clone_repo(&mut repobuilder, repo, "main", None, &clone_mode, &cfg) {
                     Ok(local_repo)=>{
                         if local_repo.is_failed() {
                             warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
@@ -193,7 +194,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             },
             DataElement::LocalRepo(local_repo) if local_repo.is_failed() =>{
-                match clone_repo(&mut repobuilder, local_repo.defn, "main", None, &clone_mode) {
+                match clone_repo(&mut repobuilder, local_repo.defn, "main", None, &clone_mode, &cfg) {
                     Ok(local_repo)=>{
                         if local_repo.is_failed() {
                             warn!("❌ {} - {}", local_repo.defn, local_repo.last_error.as_ref().unwrap());
@@ -360,7 +361,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     state.data.repos = state.data.repos
         .into_iter()
         .map(|elmt| match elmt {
-            DataElement::BranchedRepo(repo) if repo.committed && !repo.pushed => match do_push(&repo) {
+            DataElement::BranchedRepo(repo) if repo.committed && !repo.pushed => match do_push(&repo, &cfg) {
                Ok(_)=>{
                 let mut updated = repo.clone();
 
