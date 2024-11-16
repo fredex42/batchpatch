@@ -36,7 +36,9 @@ pub fn read_repo_list(source:&Path, fault_tolerant:bool) -> Result<Box<BaseState
                 .filter(|maybe_defn| maybe_defn.is_ok())
                 .map(|defn| DataElement::RemoteRepo(defn.unwrap()))
                 .collect()
-        }
+        },
+        pr_description: None,
+        pr_title: None,
     }))
 }
 

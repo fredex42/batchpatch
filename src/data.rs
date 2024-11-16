@@ -6,8 +6,9 @@ use std::fmt;
 use regex::Regex;
 use log::info;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum DataElement {
+    PRdRepo(PRdRepo),
     BranchedRepo(BranchedRepo),
     PatchedRepo(PatchedRepo),
     LocalRepo(LocalRepo),
@@ -55,7 +56,8 @@ impl CloneMode {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoDefn {
     pub owner:String,
-    pub name:String
+    pub name:String,
+    pub main_branch_name: Option<String>,
 }
 
 impl fmt::Display for RepoDefn {
@@ -89,11 +91,11 @@ impl RepoDefn {
         match (url_re.captures(from), simple_re.captures(from)) {
             (Some(caps), _)=>{
                 let (_, [org, repo]) = caps.extract();
-                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string()})
+                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string(), main_branch_name: None})
             },
             (_, Some(caps))=>{
                 let (_, [org, repo]) = caps.extract();
-                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string()})
+                Ok(RepoDefn { owner: org.to_string(), name: repo.to_string(), main_branch_name: None})
             }
             (None, None)=>Err(Box::from("Line was not in a valid format")),
         }
@@ -132,6 +134,13 @@ pub struct BranchedRepo {
     pub last_error: Option<String>
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PRdRepo {
+    pub branched: BranchedRepo,
+    pub url: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BaseDataDefn {
     pub repos:Vec<DataElement>
@@ -139,7 +148,9 @@ pub struct BaseDataDefn {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BaseStateDefn {
-    pub data:BaseDataDefn
+    pub data:BaseDataDefn,
+    pub pr_description: Option<String>,
+    pub pr_title: Option<String>,
 }
 
 pub fn load_datafile(p:&Path) -> Result<BaseStateDefn, Box<dyn Error>> {
@@ -157,7 +168,9 @@ pub fn create_datafile(p:&Path) -> Result<BaseStateDefn, Box<dyn Error>> {
     let data = BaseStateDefn {
         data: BaseDataDefn {
             repos: vec![],
-        }
+        },
+        pr_description: None,
+        pr_title: None,
     };
     let serialized = serde_json::to_string_pretty(&data)?;
     file.write(serialized.as_bytes())?;

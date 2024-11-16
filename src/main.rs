@@ -4,6 +4,7 @@ mod gitutils;
 mod patcher;
 mod list;
 mod gitconfig;
+mod github;
 mod push;
 mod remote_callbacks;
 use std::io::ErrorKind;
@@ -16,6 +17,7 @@ use crate::clone::clone_repo;
 use clap::Parser;
 use data::{create_datafile, load_configfile, write_datafile, BaseStateDefn, BranchedRepo, CloneMode, DataElement};
 use git2::{Branch, Signature};
+use github::create_all_pull_requests;
 use gitutils::{build_git_client, do_branch, do_commit};
 use gitconfig::{load_users_git_config, GitConfig};
 use list::read_repo_list;
@@ -395,6 +397,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     info!("👍 Pushed {} repos; {} failed", pushed_repos_count,  committed_repos_count - pushed_repos_count);
+
+    match cfg.github_access_token.as_ref() {
+        Some(gh_access_token)=>{
+            state = create_all_pull_requests(state, gh_access_token)?;
+            write_datafile(state_file_path, &state)?;
+        },
+        None=>{
+            error!("😲 There is no github access token configured so we can't create pull requests");
+        }
+    }
+
 
     Ok( () )
 }
