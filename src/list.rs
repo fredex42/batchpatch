@@ -43,7 +43,6 @@ pub fn read_repo_list(source:&Path, fault_tolerant:bool) -> Result<Box<BaseState
 }
 
 mod test {
-    //FIXME: need some kind of "afterEach" hook and better tempfile generation
     use tempfile::NamedTempFile;
     use std::io::Write;
 
