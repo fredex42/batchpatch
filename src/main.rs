@@ -51,7 +51,10 @@ struct Args {
     branch_name: String,
 
     #[arg(long, help="Cloning mode - whether to use SSH (the default) or HTTPS")]
-    mode: String
+    mode: String,
+
+    #[arg(long, action, help="Don't push branches or create PRs")]
+    no_push: bool
 }
 
 fn get_patch_file(args:&Args) -> Result<PatchSource, Box<dyn Error>> {
@@ -365,55 +368,58 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     info!("👍 Committed {} repos; {} failed", committed_repos_count, committed_repos_count - branched_repos_count);
 
-    state.data.repos = state.data.repos
-        .into_iter()
-        .map(|elmt| match elmt {
-            DataElement::BranchedRepo(repo) if repo.committed && !repo.pushed => match do_push(&repo, &cfg) {
-               Ok(_)=>{
-                let mut updated = repo.clone();
+    if args.no_push {
+        info!("✨ All done, you selected no-push so keeping changes locally")
+    } else {
+        state.data.repos = state.data.repos
+            .into_iter()
+            .map(|elmt| match elmt {
+                DataElement::BranchedRepo(repo) if repo.committed && !repo.pushed => match do_push(&repo, &cfg) {
+                Ok(_)=>{
+                    let mut updated = repo.clone();
 
-                updated.last_error = None;
-                updated.pushed = true;
-                DataElement::BranchedRepo(updated)
-               },
-               Err(e)=>{
-                error!("👎 Unable to push {}: {}", repo.patched.repo.defn, e.to_string());
-                let mut updated = repo.clone();
-                updated.last_error = Some(e.to_string());
-                updated.pushed = false;
-                DataElement::BranchedRepo(updated)
-               }
+                    updated.last_error = None;
+                    updated.pushed = true;
+                    DataElement::BranchedRepo(updated)
+                },
+                Err(e)=>{
+                    error!("👎 Unable to push {}: {}", repo.patched.repo.defn, e.to_string());
+                    let mut updated = repo.clone();
+                    updated.last_error = Some(e.to_string());
+                    updated.pushed = false;
+                    DataElement::BranchedRepo(updated)
+                }
+                },
+                other @_ => other,
+            })
+            .collect();
+
+        //Update our state on-disk so we can resume
+        write_datafile(state_file_path, &state)?;
+
+        let pushed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
+            DataElement::BranchedRepo(repo) if repo.pushed => true,
+            DataElement::PRdRepo(_)=>true,
+            _=>false
+        }).count();
+
+        if pushed_repos_count==0 {
+            warn!("👎 No repos managed to push");
+            return Err(Box::from("No repos managed to push"))
+        }
+
+        info!("👍 Pushed {} repos; {} failed", pushed_repos_count,  committed_repos_count - pushed_repos_count);
+
+        match cfg.github_access_token.as_ref() {
+            Some(gh_access_token)=>{
+                state = create_all_pull_requests(state, gh_access_token)?;
+                write_datafile(state_file_path, &state)?;
             },
-            other @_ => other,
-        })
-        .collect();
-
-    //Update our state on-disk so we can resume
-    write_datafile(state_file_path, &state)?;
-
-    let pushed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
-        DataElement::BranchedRepo(repo) if repo.pushed => true,
-        DataElement::PRdRepo(_)=>true,
-        _=>false
-    }).count();
-
-    if pushed_repos_count==0 {
-        warn!("👎 No repos managed to push");
-        return Err(Box::from("No repos managed to push"))
-    }
-
-    info!("👍 Pushed {} repos; {} failed", pushed_repos_count,  committed_repos_count - pushed_repos_count);
-
-    match cfg.github_access_token.as_ref() {
-        Some(gh_access_token)=>{
-            state = create_all_pull_requests(state, gh_access_token)?;
-            write_datafile(state_file_path, &state)?;
-        },
-        None=>{
-            error!("😲 There is no github access token configured so we can't create pull requests");
+            None=>{
+                error!("😲 There is no github access token configured so we can't create pull requests");
+            }
         }
     }
-
 
     Ok( () )
 }
