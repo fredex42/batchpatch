@@ -83,6 +83,17 @@ batchpatch -c /path/to/your/config.json -d batchpatch.state -r /path/to/repo/lis
 This will use your token to clone all of the repos; create a branch called `name-for-new-branch`; apply the patch file; commit the result with the message you specify;
 push the branch; then create a pull request on the repos pointing to the branch. Voila! Any review/commit/CI automations you have in place can now take over.
 
+You can use the `--no-push` option to keep all changes locally for checking, then re-run if it's OK; so long as you keep the `batchpatch.state` file successful operations won't be retried.
+
+### Step four - continuing where you left off
+
+In the example above, you added `-d batchpatch.state`.  The app will create this file and store the current run
+state in JSON format.  This allows it to simply continue where you left off.  If any step fails for a repo, then
+the state records where it failed; only failed steps (and not done subsequent steps) will be run the next time.
+
+If you want to start over, then clear out the cloned repos from your temporary directory and delete the state file.
+The operations will be started from the beginning.
+
 ## Development
 
 The app is written in Rust; use Rustup (https://www.rust-lang.org/tools/install) to get the toolchain installed if you don't have it already.  Then simply:
