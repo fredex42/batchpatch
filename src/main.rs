@@ -243,6 +243,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let patched_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
         DataElement::PatchedRepo(repo)=>repo.success && repo.changes>0,
         DataElement::BranchedRepo(_)=>true,
+        DataElement::PRdRepo(_)=>true,
         _ => false,
     }).count();
 
@@ -310,6 +311,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let branched_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
         DataElement::BranchedRepo(repo)=>repo.last_error.is_none() && !repo.committed,
+        DataElement::PRdRepo(_)=>true,
         _ => false,
     }).count();
 
@@ -349,7 +351,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_datafile(state_file_path, &state)?;
 
     let committed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
-        DataElement::BranchedRepo(repo) if repo.committed || repo.pushed => true,
+        DataElement::BranchedRepo(repo) if repo.committed => true,
+        DataElement::PRdRepo(_)=>true,
         _=>false
     }).count();
 
@@ -358,7 +361,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(Box::from("No repos managed to commit"))
     }
 
-    info!("👍 Committed {} repos; {} failed", committed_repos_count, branched_repos_count - committed_repos_count);
+    debug!("committed_repos_count = {}, branched_repos_count = {}", committed_repos_count, branched_repos_count);
+
+    info!("👍 Committed {} repos; {} failed", committed_repos_count, committed_repos_count - branched_repos_count);
 
     state.data.repos = state.data.repos
         .into_iter()
@@ -388,6 +393,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let pushed_repos_count = state.data.repos.iter().filter(|elmt| match elmt {
         DataElement::BranchedRepo(repo) if repo.pushed => true,
+        DataElement::PRdRepo(_)=>true,
         _=>false
     }).count();
 

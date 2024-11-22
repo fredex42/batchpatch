@@ -18,14 +18,14 @@ pub async fn create_pull_request(gh_client: &Client, branched: &BranchedRepo, ma
         body: pr_description.to_string(),
         draft: Some(false),
         head: branched.branch_name.clone(),
-        issue: 0,   //hmmm the octokit main docs say that this field is optional??
+        issue: 0,   //hmmm the octokit main docs say that this field is optional?? Supplying 0 seems to do the right thing.
         maintainer_can_modify: Some(true),
         title: pr_title.to_string(),
     };
 
     let response = gh_client.pulls().create(&repo.owner, &repo.name, &req).await?;
 
-    Ok( response.body.url )
+    Ok( response.body.html_url )
 }
 
 /**
