@@ -47,25 +47,9 @@ pub fn configure_callbacks<'a>(mode:Option<&'a CloneMode>, app_config:&ConfigFil
 }
 
 fn git_ssh_auth(user: &str, maybe_key:Option<&String>) -> Result<git2::Cred, git2::Error> {
-    let homedir = homedir();
-    let maybe_env_key = env::var("SSH_KEY");
+    info!("🔑 Authenticating with SSH key from agent");
 
-    let keypath = match (maybe_key, maybe_env_key.as_ref()) {
-        (Some(pathstr), _)=> Path::new(pathstr).to_path_buf(),
-        (None, Ok(k))=> Path::new(k).to_path_buf(),
-        (None, Err(_)) => {
-            let mut pb = PathBuf::new();
-            pb.push(homedir);
-            pb.push(".ssh");
-            pb.push("id_rsa");
-            pb
-        }
-    };
-
-    info!("🔑 Authenticating with SSH key {}", keypath.display());
-
-    //FIXME: Handle passphrase
-    git2::Cred::ssh_key(user, None, keypath.as_path(), None)
+    git2::Cred::ssh_key_from_agent(user)
 }
 
 // pub fn git_credentials_callback_ssh(user:&str, user_from_url: Option<&str>, cred: git2::CredentialType) -> Result<git2::Cred, git2::Error> {
