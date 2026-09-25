@@ -10,8 +10,11 @@ fn get_repo_remote<'a>(repo:&'a Repository) -> Result<Remote<'a>, Box<dyn Error>
         error!("🎛️ Repository had {} remotes, but we only want 1", remote_names.len());
         return Err( Box::from("We currently only support the repo having 1 remote"));
     }
-    let remote_name = remote_names.get(0).unwrap();
-    Ok(repo.find_remote(remote_name)? )
+    let remote_name = remote_names
+        .get(0)
+        .map_err(|e| Box::<dyn Error>::from(e))?
+        .ok_or("Repository remote list did not include the expected remote name")?;
+    Ok(repo.find_remote(remote_name)?)
 }
 
 pub fn do_push(repo:&BranchedRepo, app_config:&ConfigFile) -> Result<(), Box<dyn Error>> {
@@ -20,8 +23,16 @@ pub fn do_push(repo:&BranchedRepo, app_config:&ConfigFile) -> Result<(), Box<dyn
     branch_ref.set_upstream(Some(&repo.branch_name))?;
 
     let mut remote = get_repo_remote(&repo_ref)?;
-    info!("🔌 Connecting to remote {} at {}", remote.name().unwrap_or("(unknown name)"), remote.url().unwrap_or("(unknown url)"));
-    let mode = remote.url().map(CloneMode::from_url).flatten();
+    let remote_name = remote
+        .name()
+        .ok()
+        .flatten()
+        .unwrap_or("(unknown name)");
+    let remote_url = remote
+        .url()
+        .unwrap_or("(unknown url)");
+    info!("🔌 Connecting to remote {} at {}", remote_name, remote_url);
+    let mode = remote.url().ok().and_then(CloneMode::from_url);
 
     let callbacks = configure_callbacks(mode.as_ref(), app_config);
 
@@ -29,13 +40,13 @@ pub fn do_push(repo:&BranchedRepo, app_config:&ConfigFile) -> Result<(), Box<dyn
     //remote.connect(git2::Direction::Push)?;
 
     let result = match branch_ref.into_reference().name() {
-        Some(refspec)=>{
+        Ok(refspec)=>{
             info!("🚜 Pushing {}", refspec);
             authed.remote().push(&[refspec], None)?;
             authed.remote().disconnect()?;   //FIXME - this is far from ideal as we may not clean up properly due to early error termination. Should write a RAII wrapper to do it right.
             Ok( () )
         },
-        None=>{
+        Err(_)=>{
             error!("💨 The branch did not have a valid reference name");
             authed.remote().disconnect()?;
             Err( Box::from("the branch did not have a valid reference name"))
@@ -44,4 +55,3 @@ pub fn do_push(repo:&BranchedRepo, app_config:&ConfigFile) -> Result<(), Box<dyn
 
     result
 }
-
